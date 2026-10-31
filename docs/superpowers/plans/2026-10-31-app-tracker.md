@@ -91,10 +91,12 @@ Written for: 実装を担当するエージェント（Haiku 5.5）と、後で�
 
 ## フェーズ 3: tray（Python）
 
-- [x] `tray/tray.py`（pystray + Pillow）。`/api/status` を 5 秒おきに取得し、ツールチップを更新
-- [x] メニュー: 「WebUI を開く」「終了」。tracker 未接続なら「未接続」と表示
+- [x] `tray/tray.py`（pystray + Pillow）。`/api/status` を 5 秒おきに取得し、トレイのツールチップを更新
+- [x] `tray/overlay.py`: タスクバーウィンドウ（最前面の `WS_POPUP` 窓）を、通知領域の左隣に高さ一杯で表示する。クリスタとスレスパの今日の合計を表示（子ウィンドウにはしない。描画が XAML 層の下に回るため）
+- [x] メニュー: 「WebUI を開く」「終了」。トレイのクリックで WebUI を開く。tracker 未接続なら「未接続」と表示
 - [x] `tray/requirements.txt`（pystray, Pillow のバージョン固定）
-- [ ] 検証: 実機で `pythonw tray/tray.py` を起動し、タスクバーに出ること（ユーザー目視待ち）
+- [x] 検証: 実機スクリーンショットで、通知領域の左に「クリスタ 12分 / スレスパ 0分」が出ることを確認
+- [ ] 検証（ユーザー目視待ち）: トレイのクリックで WebUI が開くこと、「終了」でアイコンとオーバーレイが消えること
 
 ## フェーズ 4: 常駐化と旧版の整理
 

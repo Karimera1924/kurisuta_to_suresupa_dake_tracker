@@ -1,7 +1,11 @@
-"""アプリ時間トラッカーのタスクバー常駐アイコン。
+"""アプリ時間トラッカーのタスクバー常駐アイコンと、タスクバーのオーバーレイ。
 
-/api/status を 5 秒おきに取得して、ツールチップ（マウスを載せた時の文字）を更新する。
-メニューは「WebUI を開く」「終了」。トラッカーに接続できない時は「未接続」と表示する。
+/api/status を 5 秒おきに取得して、以下を更新する。
+- タスクバーのオーバーレイ（通知領域のすぐ左に、クリスタとスレスパの今日の合計）
+- トレイアイコンのツールチップ（マウスを載せた時の文字）
+
+トレイのメニューは「WebUI を開く」「終了」。オーバーレイのクリックでも WebUI を開く。
+トラッカーに接続できない時は「未接続」と表示する。
 
 起動: pythonw tray/tray.py
 """
@@ -14,6 +18,8 @@ import webbrowser
 
 import pystray
 from PIL import Image, ImageDraw
+
+from overlay import Overlay, enable_dpi_awareness
 
 POLL_SECONDS = 5
 HOST = "127.0.0.1"
@@ -69,25 +75,35 @@ def icon_color(status):
     return COLOR_COUNTING if status.get("counting") else COLOR_IDLE
 
 
-def poll(icon, stop_event):
+def poll(icon, overlay, stop_event):
     # 取得 → 表示更新 を POLL_SECONDS おきに繰り返す。stop されたら終わる
     while not stop_event.is_set():
         status = fetch_status()
         icon.icon = make_icon_image(icon_color(status))
         icon.title = build_tooltip(status)
+        overlay.set_status(status)
         stop_event.wait(POLL_SECONDS)
 
 
-def open_webui(icon, item):
+def open_webui_url():
     webbrowser.open(BASE_URL + "/")
 
 
-def quit_app(icon, item):
-    icon.stop()
+def open_webui(icon, item):
+    open_webui_url()
 
 
 def main():
+    # オーバーレイの窓は主スレッドのメッセージループで回し、トレイは別スレッドで動かす
+    enable_dpi_awareness()
     stop_event = threading.Event()
+    overlay = Overlay(on_click=open_webui_url)
+
+    def quit_app(icon, item):
+        stop_event.set()
+        icon.stop()
+        overlay.stop()
+
     icon = pystray.Icon(
         "apptime",
         make_icon_image(COLOR_OFFLINE),
@@ -100,10 +116,16 @@ def main():
 
     def setup(icon):
         icon.visible = True
-        threading.Thread(target=poll, args=(icon, stop_event), daemon=True).start()
+        threading.Thread(
+            target=poll, args=(icon, overlay, stop_event), daemon=True
+        ).start()
 
-    icon.run(setup)
-    stop_event.set()
+    icon.run_detached(setup)
+    try:
+        overlay.run()
+    finally:
+        stop_event.set()
+        icon.stop()
 
 
 if __name__ == "__main__":
