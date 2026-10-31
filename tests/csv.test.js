@@ -31,7 +31,10 @@ test("summary を書いて、同じ合計を読み戻せる（再起動の引き
 
   const text = fs.readFileSync(summaryPath(dir, date), "utf8");
   assert.ok(
-    text.startsWith(String.fromCharCode(0xfeff) + "date,app,total_seconds,total_minutes,updated_at"),
+    text.startsWith(
+      String.fromCharCode(0xfeff) +
+        "date,app,total_seconds,total_minutes,updated_at",
+    ),
   );
   assert.ok(text.includes("2026-10-31,クリスタ,600,10,12:00:00"));
 
