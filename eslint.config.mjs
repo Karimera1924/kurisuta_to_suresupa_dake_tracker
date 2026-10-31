@@ -7,4 +7,8 @@ export default [
     files: ["**/*.js"],
     languageOptions: { globals: globals.node },
   },
+  {
+    files: ["web/**/*.js"],
+    languageOptions: { globals: globals.browser },
+  },
 ];
