@@ -31,7 +31,7 @@ test("summary を書いて、同じ合計を読み戻せる（再起動の引き
 
   const text = fs.readFileSync(summaryPath(dir, date), "utf8");
   assert.ok(
-    text.startsWith("FEFFdate,app,total_seconds,total_minutes,updated_at"),
+    text.startsWith(String.fromCharCode(0xfeff) + "date,app,total_seconds,total_minutes,updated_at"),
   );
   assert.ok(text.includes("2026-10-31,クリスタ,600,10,12:00:00"));
 
@@ -66,7 +66,7 @@ test("sessions はヘッダを 1 回だけ書き、以後は追記する", () =>
 
   const lines = fs
     .readFileSync(sessionsPath(dir, date), "utf8")
-    .replace(/^FEFF/, "")
+    .replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")
     .split("\r\n")
     .filter(Boolean);
   assert.deepEqual(lines, [

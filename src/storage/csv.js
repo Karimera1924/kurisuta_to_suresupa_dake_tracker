@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const BOM = "FEFF";
+const BOM = String.fromCharCode(0xfeff);
 const SUMMARY_HEADER = "date,app,total_seconds,total_minutes,updated_at";
 const SESSIONS_HEADER = "date,app,start,end,seconds";
 
@@ -62,7 +62,7 @@ function loadTotals({ dir, date, targets }) {
   const totals = {};
   const file = summaryPath(dir, date);
   if (!fs.existsSync(file)) return totals;
-  const text = fs.readFileSync(file, "utf8").replace(/^FEFF/, "");
+  const text = fs.readFileSync(file, "utf8").replace(new RegExp("^" + BOM), "");
   const rows = text.split(/\r?\n/).slice(1).filter(Boolean);
   for (const row of rows) {
     const cols = row.split(",");
