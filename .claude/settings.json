@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx prettier --write . && npx eslint ."
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && npx prettier --write . && npx eslint ."
           }
         ]
       }

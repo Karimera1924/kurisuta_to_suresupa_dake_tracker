@@ -1,6 +1,44 @@
 import unittest
+from unittest import mock
 
-from tray import build_tooltip
+import tray
+from tray import build_tooltip, refresh_once, status_from_json
+
+
+class StatusFromJsonTest(unittest.TestCase):
+    def test_totalsのある辞書はそのまま返す(self):
+        data = {"counting": False, "totals": {}}
+        self.assertIs(status_from_json(data), data)
+
+    def test_辞書でなければ未接続扱い(self):
+        self.assertIsNone(status_from_json(["totals"]))
+        self.assertIsNone(status_from_json(None))
+
+    def test_totalsが無い時は未接続扱い(self):
+        self.assertIsNone(status_from_json({"counting": True}))
+
+    def test_totalsが辞書でなければ未接続扱い(self):
+        self.assertIsNone(status_from_json({"totals": [1, 2]}))
+
+
+class RefreshOnceTest(unittest.TestCase):
+    def test_未接続ならツールチップを未接続にする(self):
+        icon = mock.Mock()
+        overlay = mock.Mock()
+        with mock.patch.object(tray, "fetch_status", return_value=None):
+            refresh_once(icon, overlay)
+        self.assertEqual(icon.title, "アプリ時間: 未接続")
+        overlay.set_status.assert_called_once_with(None)
+
+    def test_表示更新で例外が出てもログに残して止まらない(self):
+        icon = mock.Mock()
+        overlay = mock.Mock()
+        overlay.set_status.side_effect = RuntimeError("描画できない")
+        with mock.patch.object(tray, "fetch_status", return_value=None), mock.patch.object(
+            tray, "log_error"
+        ) as log:
+            refresh_once(icon, overlay)  # 例外は外へ出ない
+        log.assert_called_once()
 
 
 class BuildTooltipTest(unittest.TestCase):

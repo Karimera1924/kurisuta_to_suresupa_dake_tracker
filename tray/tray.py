@@ -19,7 +19,7 @@ import webbrowser
 import pystray
 from PIL import Image, ImageDraw
 
-from overlay import Overlay, enable_dpi_awareness
+from overlay import Overlay, enable_dpi_awareness, log_error
 
 POLL_SECONDS = 5
 HOST = "127.0.0.1"
@@ -31,12 +31,22 @@ COLOR_COUNTING = (26, 127, 55)
 COLOR_IDLE = (119, 119, 119)
 COLOR_OFFLINE = (180, 35, 24)
 
+# 127.0.0.1 へはシステムのプロキシを通さない（通すと未接続になることがある）
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def status_from_json(data):
+    # /api/status の形（totals が辞書）でなければ未接続扱いの None
+    if isinstance(data, dict) and isinstance(data.get("totals"), dict):
+        return data
+    return None
+
 
 def fetch_status(timeout=2):
     # 接続できない・応答がおかしい場合は None を返す（未接続扱い）
     try:
-        with urllib.request.urlopen(f"{BASE_URL}/api/status", timeout=timeout) as res:
-            return json.load(res)
+        with _OPENER.open(f"{BASE_URL}/api/status", timeout=timeout) as res:
+            return status_from_json(json.load(res))
     except Exception:
         return None
 
@@ -75,13 +85,21 @@ def icon_color(status):
     return COLOR_COUNTING if status.get("counting") else COLOR_IDLE
 
 
-def poll(icon, overlay, stop_event):
-    # 取得 → 表示更新 を POLL_SECONDS おきに繰り返す。stop されたら終わる
-    while not stop_event.is_set():
+def refresh_once(icon, overlay):
+    # 1 回分の取得と表示更新。例外が出てもポーリングを止めないよう、ログに残して握りつぶす
+    try:
         status = fetch_status()
         icon.icon = make_icon_image(icon_color(status))
         icon.title = build_tooltip(status)
         overlay.set_status(status)
+    except Exception as exc:
+        log_error(exc)
+
+
+def poll(icon, overlay, stop_event):
+    # 取得 → 表示更新 を POLL_SECONDS おきに繰り返す。stop されたら終わる
+    while not stop_event.is_set():
+        refresh_once(icon, overlay)
         stop_event.wait(POLL_SECONDS)
 
 

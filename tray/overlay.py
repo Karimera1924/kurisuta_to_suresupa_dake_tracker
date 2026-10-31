@@ -4,6 +4,10 @@
 子ウィンドウだとタスクバーの描画層の裏に回るため。
 窓の右端を通知領域（TrayNotifyWnd）の左端に揃え、高さはタスクバーに合わせる。
 Windows のウィジェット機能とは別物。
+
+見た目は、対象ごとの角丸の半透明な枠（ピル型）だけを描く。
+それ以外の部分は完全に透明にして、背景のタスクバーをそのまま見せる。
+（レイヤー窓 + UpdateLayeredWindow で、ピクセル単位の α を付ける）
 """
 
 import ctypes
@@ -16,37 +20,75 @@ from datetime import datetime
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
 shcore = ctypes.WinDLL("shcore", use_last_error=True)
+shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 
 HANDLE = ctypes.c_void_p
 LRESULT = ctypes.c_ssize_t
 WNDPROC = ctypes.WINFUNCTYPE(
     LRESULT, HANDLE, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
 )
+WINEVENTPROC = ctypes.WINFUNCTYPE(
+    None,
+    HANDLE,
+    wintypes.DWORD,
+    HANDLE,
+    wintypes.LONG,
+    wintypes.LONG,
+    wintypes.DWORD,
+    wintypes.DWORD,
+)
 
 WS_POPUP = 0x80000000
 WS_EX_TOPMOST = 0x00000008
 WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_LAYERED = 0x00080000
 WS_EX_NOACTIVATE = 0x08000000
 HWND_TOPMOST = -1
 HWND_MESSAGE = -3
 SWP_NOACTIVATE = 0x0010
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
 SWP_SHOWWINDOW = 0x0040
-WM_PAINT = 0x000F
 WM_LBUTTONUP = 0x0202
 WM_APP = 0x8000
 MSG_REFRESH = WM_APP + 1
 MSG_STOP = WM_APP + 2
+WM_TIMER = 0x0113
+# 全画面の出入りは前面の切り替えを伴わないことがあるため、表示の要否をこの間隔で見直す（ミリ秒）
+RECHECK_TIMER_ID = 1
+RECHECK_MS = 300
 DT_CENTER = 0x01
 DT_VCENTER = 0x04
 DT_SINGLELINE = 0x20
+DT_NOPREFIX = 0x800
+DT_END_ELLIPSIS = 0x8000
 TRANSPARENT = 1
 FW_NORMAL = 400
 DEFAULT_CHARSET = 1
-CLEARTYPE_QUALITY = 5
+ANTIALIASED_QUALITY = 4
+DIB_RGB_COLORS = 0
+BI_RGB = 0
+NULL_PEN = 8
+AC_SRC_OVER = 0
+AC_SRC_ALPHA = 1
+ULW_ALPHA = 0x00000002
 CLASS_NAME = "AppTimeOverlay"
 TASKBAR_CLASS = "Shell_TrayWnd"
 TRAY_NOTIFY_CLASS = "TrayNotifyWnd"
 PROCESS_PER_MONITOR_DPI_AWARE = 2
+SW_HIDE = 0
+EVENT_SYSTEM_FOREGROUND = 0x0003
+WINEVENT_OUTOFCONTEXT = 0x0000
+MONITOR_DEFAULTTONEAREST = 0x00000002
+ABM_GETSTATE = 0x00000004
+ABS_AUTOHIDE = 0x00000001
+# デスクトップ等は画面いっぱいの窓なので、全画面扱いから外す
+SHELL_CLASSES = ("Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd")
+
+# ピルの背面色（α を付けた時の不透明度）。透明にする部分は番兵色で描いてから α=0 にする
+PILL_ALPHA = 210
+SENTINEL_RGB = 0xFF00FF  # DIB 形式（0x00RRGGBB）の番兵色（マゼンタ）
+PILL_MARGIN = 4  # 論理ピクセル（100% 基準）。タスクバーの上下と、枠同士の隙間
 
 
 class RECT(ctypes.Structure):
@@ -62,15 +104,37 @@ class POINT(ctypes.Structure):
     _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
 
 
-class PAINTSTRUCT(ctypes.Structure):
+class SIZE(ctypes.Structure):
+    _fields_ = [("cx", wintypes.LONG), ("cy", wintypes.LONG)]
+
+
+class BLENDFUNCTION(ctypes.Structure):
     _fields_ = [
-        ("hdc", HANDLE),
-        ("fErase", wintypes.BOOL),
-        ("rcPaint", RECT),
-        ("fRestore", wintypes.BOOL),
-        ("fIncUpdate", wintypes.BOOL),
-        ("rgbReserved", ctypes.c_byte * 32),
+        ("BlendOp", ctypes.c_ubyte),
+        ("BlendFlags", ctypes.c_ubyte),
+        ("SourceConstantAlpha", ctypes.c_ubyte),
+        ("AlphaFormat", ctypes.c_ubyte),
     ]
+
+
+class BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [
+        ("biSize", wintypes.DWORD),
+        ("biWidth", wintypes.LONG),
+        ("biHeight", wintypes.LONG),
+        ("biPlanes", wintypes.WORD),
+        ("biBitCount", wintypes.WORD),
+        ("biCompression", wintypes.DWORD),
+        ("biSizeImage", wintypes.DWORD),
+        ("biXPelsPerMeter", wintypes.LONG),
+        ("biYPelsPerMeter", wintypes.LONG),
+        ("biClrUsed", wintypes.DWORD),
+        ("biClrImportant", wintypes.DWORD),
+    ]
+
+
+class BITMAPINFO(ctypes.Structure):
+    _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", wintypes.DWORD * 1)]
 
 
 class WNDCLASSW(ctypes.Structure):
@@ -96,6 +160,26 @@ class MSG(ctypes.Structure):
         ("lParam", wintypes.LPARAM),
         ("time", wintypes.DWORD),
         ("pt", POINT),
+    ]
+
+
+class MONITORINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("rcMonitor", RECT),
+        ("rcWork", RECT),
+        ("dwFlags", wintypes.DWORD),
+    ]
+
+
+class APPBARDATA(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD),
+        ("hWnd", HANDLE),
+        ("uCallbackMessage", wintypes.UINT),
+        ("uEdge", wintypes.UINT),
+        ("rc", RECT),
+        ("lParam", wintypes.LPARAM),
     ]
 
 
@@ -144,6 +228,9 @@ CreateWindowExW = _proto(
 )
 IsWindow = _proto(user32, "IsWindow", wintypes.BOOL, HANDLE)
 RegisterClassW = _proto(user32, "RegisterClassW", wintypes.ATOM, ctypes.POINTER(WNDCLASSW))
+# 第 2 引数は MAKEINTRESOURCE(IDC_ARROW) = 32512。整数をそのまま渡すため HANDLE で受ける
+LoadCursorW = _proto(user32, "LoadCursorW", HANDLE, HANDLE, HANDLE)
+IDC_ARROW = 32512
 DefWindowProcW = _proto(
     user32, "DefWindowProcW", LRESULT, HANDLE, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
 )
@@ -156,15 +243,80 @@ PostMessageW = _proto(
     user32, "PostMessageW", wintypes.BOOL, HANDLE, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
 )
 PostQuitMessage = _proto(user32, "PostQuitMessage", None, ctypes.c_int)
-BeginPaint = _proto(user32, "BeginPaint", HANDLE, HANDLE, ctypes.POINTER(PAINTSTRUCT))
-EndPaint = _proto(user32, "EndPaint", wintypes.BOOL, HANDLE, ctypes.POINTER(PAINTSTRUCT))
+GetDC = _proto(user32, "GetDC", HANDLE, HANDLE)
+ReleaseDC = _proto(user32, "ReleaseDC", ctypes.c_int, HANDLE, HANDLE)
 FillRect = _proto(user32, "FillRect", ctypes.c_int, HANDLE, ctypes.POINTER(RECT), HANDLE)
 DrawTextW = _proto(
     user32, "DrawTextW", ctypes.c_int, HANDLE, wintypes.LPCWSTR, ctypes.c_int, ctypes.POINTER(RECT), wintypes.UINT
 )
 GetDpiForWindow = _proto(user32, "GetDpiForWindow", wintypes.UINT, HANDLE)
-InvalidateRect = _proto(user32, "InvalidateRect", wintypes.BOOL, HANDLE, ctypes.c_void_p, wintypes.BOOL)
+GetForegroundWindow = _proto(user32, "GetForegroundWindow", HANDLE)
+GetClassNameW = _proto(user32, "GetClassNameW", ctypes.c_int, HANDLE, wintypes.LPWSTR, ctypes.c_int)
+MonitorFromWindow = _proto(user32, "MonitorFromWindow", HANDLE, HANDLE, wintypes.DWORD)
+GetMonitorInfoW = _proto(user32, "GetMonitorInfoW", wintypes.BOOL, HANDLE, ctypes.POINTER(MONITORINFO))
+ShowWindow = _proto(user32, "ShowWindow", wintypes.BOOL, HANDLE, ctypes.c_int)
+SetWinEventHook = _proto(
+    user32,
+    "SetWinEventHook",
+    HANDLE,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    HANDLE,
+    WINEVENTPROC,
+    wintypes.DWORD,
+    wintypes.DWORD,
+    wintypes.DWORD,
+)
+UnhookWinEvent = _proto(user32, "UnhookWinEvent", wintypes.BOOL, HANDLE)
+SetTimer = _proto(
+    user32, "SetTimer", ctypes.c_size_t, HANDLE, ctypes.c_size_t, wintypes.UINT, HANDLE
+)
+KillTimer = _proto(user32, "KillTimer", wintypes.BOOL, HANDLE, ctypes.c_size_t)
+DestroyWindow = _proto(user32, "DestroyWindow", wintypes.BOOL, HANDLE)
+SHAppBarMessage = _proto(
+    shell32, "SHAppBarMessage", ctypes.c_size_t, wintypes.DWORD, ctypes.POINTER(APPBARDATA)
+)
+UpdateLayeredWindow = _proto(
+    user32,
+    "UpdateLayeredWindow",
+    wintypes.BOOL,
+    HANDLE,
+    HANDLE,
+    ctypes.POINTER(POINT),
+    ctypes.POINTER(SIZE),
+    HANDLE,
+    ctypes.POINTER(POINT),
+    wintypes.DWORD,
+    ctypes.POINTER(BLENDFUNCTION),
+    wintypes.DWORD,
+)
+CreateCompatibleDC = _proto(gdi32, "CreateCompatibleDC", HANDLE, HANDLE)
+DeleteDC = _proto(gdi32, "DeleteDC", wintypes.BOOL, HANDLE)
+CreateDIBSection = _proto(
+    gdi32,
+    "CreateDIBSection",
+    HANDLE,
+    HANDLE,
+    ctypes.POINTER(BITMAPINFO),
+    wintypes.UINT,
+    ctypes.POINTER(ctypes.c_void_p),
+    HANDLE,
+    wintypes.DWORD,
+)
 CreateSolidBrush = _proto(gdi32, "CreateSolidBrush", HANDLE, wintypes.DWORD)
+GetStockObject = _proto(gdi32, "GetStockObject", HANDLE, ctypes.c_int)
+RoundRect = _proto(
+    gdi32,
+    "RoundRect",
+    wintypes.BOOL,
+    HANDLE,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+    ctypes.c_int,
+)
 CreateFontW = _proto(
     gdi32,
     "CreateFontW",
@@ -193,6 +345,26 @@ def overlay_layout(taskbar_height, tray_left, width):
     return (x, 0, width, taskbar_height)
 
 
+def is_cover_fullscreen(class_name, window, monitor):
+    # 前面の窓が、モニタ全体（rcMonitor）を覆っているか。デスクトップ等の殻の窓は除く
+    if class_name in SHELL_CLASSES:
+        return False
+    return (
+        window[0] <= monitor[0]
+        and window[1] <= monitor[1]
+        and window[2] >= monitor[2]
+        and window[3] >= monitor[3]
+    )
+
+
+def overlay_visible(covered_by_window, autohide):
+    # 表示するかどうか。自動的に隠れるタスクバー、またはタスクバーのあるモニタを前面の窓が覆う時は隠す
+    # SHQueryUserNotificationState は全モニタ共通の値なので、他のモニタの全画面で隠れないよう使わない
+    if autohide:
+        return False
+    return not covered_by_window
+
+
 def cell_items(status):
     # /api/status の totals を、表示用の枠のリストにする。未接続なら None
     if status is None:
@@ -210,7 +382,42 @@ def cell_items(status):
 
 
 def _rgb(r, g, b):
+    # COLORREF（0x00BBGGRR）の形で返す。CreateSolidBrush や SetTextColor に渡す値
     return r | (g << 8) | (b << 16)
+
+
+def _dib_rgb(colorref):
+    # DIB のピクセル値（0x00RRGGBB）に直す。COLORREF とは R と B の位置が逆
+    r = colorref & 0xFF
+    g = (colorref >> 8) & 0xFF
+    b = (colorref >> 16) & 0xFF
+    return (r << 16) | (g << 8) | b
+
+
+def to_argb(pixels, sentinel, pill, pill_alpha):
+    # 描いたピクセルを、UpdateLayeredWindow 用の 0xAARRGGBB（色は α で乗算済み）に変換する
+    #   番兵色 → 完全に透明
+    #   ピルの背面色 → pill_alpha の半透明
+    #   それ以外（文字）→ 不透明
+    pr = (pill >> 16) & 0xFF
+    pg = (pill >> 8) & 0xFF
+    pb = pill & 0xFF
+    premul = (
+        ((pr * pill_alpha // 255) << 16)
+        | ((pg * pill_alpha // 255) << 8)
+        | (pb * pill_alpha // 255)
+    )
+    pill_argb = (pill_alpha << 24) | premul
+    out = []
+    for v in pixels:
+        rgb = v & 0xFFFFFF
+        if rgb == sentinel:
+            out.append(0)
+        elif rgb == pill:
+            out.append(pill_argb)
+        else:
+            out.append(0xFF000000 | rgb)
+    return out
 
 
 def _is_light_theme():
@@ -232,6 +439,43 @@ def _rect_of(hwnd):
     if not GetWindowRect(hwnd, ctypes.byref(rect)):
         raise ctypes.WinError(ctypes.get_last_error())
     return rect
+
+
+def _taskbar_monitor_covered():
+    # タスクバーのあるモニタ全体を、前面の窓が覆っているか
+    # 他のモニタの全画面は見ない（SHQueryUserNotificationState は全モニタ共通のため使わない）
+    taskbar = _find_taskbar()
+    monitor = MonitorFromWindow(taskbar, MONITOR_DEFAULTTONEAREST)
+    if not monitor:
+        raise OSError("タスクバーのモニタが取れない")
+    info = MONITORINFO()
+    info.cbSize = ctypes.sizeof(MONITORINFO)
+    if not GetMonitorInfoW(monitor, ctypes.byref(info)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    mon = info.rcMonitor
+    try:
+        hwnd = GetForegroundWindow()
+        if not hwnd:
+            return False
+        buf = ctypes.create_unicode_buffer(256)
+        GetClassNameW(hwnd, buf, len(buf))
+        window = _rect_of(hwnd)
+    except OSError:
+        # 前面の窓が取れない時は覆われていない扱いにする
+        return False
+    return is_cover_fullscreen(
+        buf.value,
+        (window.left, window.top, window.right, window.bottom),
+        (mon.left, mon.top, mon.right, mon.bottom),
+    )
+
+
+def _taskbar_autohide():
+    # タスクバーが自動的に隠れる設定か
+    data = APPBARDATA()
+    data.cbSize = ctypes.sizeof(APPBARDATA)
+    state = SHAppBarMessage(ABM_GETSTATE, ctypes.byref(data))
+    return bool(state & ABS_AUTOHIDE)
 
 
 def _find_taskbar():
@@ -264,18 +508,35 @@ def _register_class():
     wc = WNDCLASSW()
     wc.lpfnWndProc = _WNDPROC_CB
     wc.lpszClassName = CLASS_NAME
+    # カーソルを指定しないと、窓の上で直前のカーソル（起動中の砂時計など）が残るため矢印を指定する
+    wc.hCursor = LoadCursorW(None, IDC_ARROW)
     if not RegisterClassW(ctypes.byref(wc)):
         raise ctypes.WinError(ctypes.get_last_error())
     _class_registered = True
 
 
 _ERROR_LOG = os.path.join(tempfile.gettempdir(), "apptime_overlay.log")
+_ERROR_LOG_MAX = 1024 * 1024  # バイト。これを超えたら作り直す
+_last_error = None
 
 
-def _log_error(exc):
-    # pythonw では標準エラーが見えないため、描画失敗の理由をファイルに残す
-    with open(_ERROR_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{datetime.now().isoformat(timespec='seconds')} {exc!r}\n")
+def log_error(exc):
+    # pythonw では標準エラーが見えないため、失敗の理由をファイルに残す
+    # 直前と同じ失敗は書かない（300 ms ごとの再確認で同じ行が溜まるのを防ぐ）
+    global _last_error
+    detail = repr(exc)
+    if detail == _last_error:
+        return
+    _last_error = detail
+    try:
+        mode = "a"
+        if os.path.exists(_ERROR_LOG) and os.path.getsize(_ERROR_LOG) > _ERROR_LOG_MAX:
+            mode = "w"
+        with open(_ERROR_LOG, mode, encoding="utf-8") as f:
+            f.write(f"{datetime.now().isoformat(timespec='seconds')} {detail}\n")
+    except OSError:
+        # ログが書けない時に、表示の処理まで止めない
+        pass
 
 
 class Overlay:
@@ -285,6 +546,9 @@ class Overlay:
         self.cell_width = cell_width  # 論理ピクセル（100% 基準）
         self.cells = None  # None は未接続
         self.overlay_hwnd = None
+        self._hook = None
+        self._hook_proc = None  # ctypes のコールバックは参照を持ち続けないと回収される
+        self._shown = False  # 表示中か（表示中の再確認では再描画を省く）
         _register_class()
         # 非表示のメッセージ専用窓。別スレッドからの更新通知と終了をここで受ける。
         # タスクバーが再起動されても、この窓は消えない
@@ -305,11 +569,39 @@ class Overlay:
         PostMessageW(self.host, MSG_STOP, 0, 0)
 
     def run(self):
-        self._refresh()
-        msg = MSG()
-        while GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            TranslateMessage(ctypes.byref(msg))
-            DispatchMessageW(ctypes.byref(msg))
+        try:
+            self._install_foreground_hook()
+            if not SetTimer(self.host, RECHECK_TIMER_ID, RECHECK_MS, None):
+                log_error(ctypes.WinError(ctypes.get_last_error()))
+            self._refresh()
+            msg = MSG()
+            while GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                TranslateMessage(ctypes.byref(msg))
+                DispatchMessageW(ctypes.byref(msg))
+        finally:
+            self._teardown()
+
+    def _teardown(self):
+        # 終了時に、フック・タイマー・窓を確実に片付ける（途中で例外が出ても残さない）
+        if self._hook:
+            UnhookWinEvent(self._hook)
+            self._hook = None
+        KillTimer(self.host, RECHECK_TIMER_ID)
+        self._discard()
+        DestroyWindow(self.host)
+
+    def _install_foreground_hook(self):
+        # 前面の窓が変わったら、表示の要否を見直す。コールバックは主スレッドのメッセージループで呼ばれる
+        self._hook_proc = WINEVENTPROC(self._on_foreground)
+        self._hook = SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, None,
+            self._hook_proc, 0, 0, WINEVENT_OUTOFCONTEXT,
+        )
+        if not self._hook:
+            log_error(ctypes.WinError(ctypes.get_last_error()))
+
+    def _on_foreground(self, hook, event, hwnd, id_object, id_child, thread, time):
+        PostMessageW(self.host, MSG_REFRESH, 0, 0)
 
     def handle(self, hwnd, msg):
         # None を返すと DefWindowProc に任せる
@@ -317,34 +609,55 @@ class Overlay:
             if msg == MSG_REFRESH:
                 self._refresh()
                 return 0
+            if msg == WM_TIMER:
+                # 表示の要否だけ見直す。表示中なら描画は変えない
+                self._refresh(repaint=False)
+                return 0
             if msg == MSG_STOP:
                 PostQuitMessage(0)
                 return 0
             return None
-        if hwnd == self.overlay_hwnd:
-            if msg == WM_PAINT:
-                self._paint(hwnd)
-                return 0
-            if msg == WM_LBUTTONUP:
-                self.on_click()
-                return 0
+        if hwnd == self.overlay_hwnd and msg == WM_LBUTTONUP:
+            self.on_click()
+            return 0
         return None
 
-    def _refresh(self):
+    def _refresh(self, repaint=True):
         try:
             if self.overlay_hwnd is None or not IsWindow(self.overlay_hwnd):
                 self._create()
-            self._place()
-            InvalidateRect(self.overlay_hwnd, None, True)
-        except OSError as exc:
-            # タスクバーが無い（Explorer 再起動中など）時は表示を飛ばす。次の更新で再試行する
-            _log_error(exc)
-            self.overlay_hwnd = None
+                self._shown = False
+            if not overlay_visible(_taskbar_monitor_covered(), _taskbar_autohide()):
+                # 全画面・自動的に隠れるタスクバーの時は隠す（SetWindowPos で再表示されないよう先に返す）
+                if self._shown:
+                    ShowWindow(self.overlay_hwnd, SW_HIDE)
+                self._shown = False
+                return
+            if repaint or not self._shown:
+                self._place()
+                self._paint(self.overlay_hwnd)
+            else:
+                # 表示中の再確認では描画を変えず、最前面だけ取り直す（他の窓に前面を取られた時の対策）
+                SetWindowPos(
+                    self.overlay_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                )
+            self._shown = True
+        except Exception as exc:
+            # タスクバーが無い（Explorer 再起動中など）時は表示を飛ばす。窓は壊して次の更新で作り直す
+            log_error(exc)
+            self._discard()
+
+    def _discard(self):
+        if self.overlay_hwnd is not None:
+            DestroyWindow(self.overlay_hwnd)
+        self.overlay_hwnd = None
+        self._shown = False
 
     def _create(self):
-        taskbar = _find_taskbar()
+        _find_taskbar()
         hwnd = CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
             CLASS_NAME, "アプリ時間", WS_POPUP, 0, 0, 1, 1,
             None, None, None, None,
         )
@@ -370,43 +683,116 @@ class Overlay:
         )
 
     def _paint(self, hwnd):
-        ps = PAINTSTRUCT()
-        hdc = BeginPaint(hwnd, ctypes.byref(ps))
         rc = RECT()
         GetClientRect(hwnd, ctypes.byref(rc))
+        w = rc.right - rc.left
+        h = rc.bottom - rc.top
+        # 描画の途中で set_status により値が変わっても、この描画の中では同じ値を使う
+        cells = self.cells
 
         light = _is_light_theme()
-        bg = _rgb(243, 243, 243) if light else _rgb(32, 32, 32)
+        pill = _rgb(255, 255, 255) if light else _rgb(40, 40, 40)
         fg = _rgb(0, 0, 0) if light else _rgb(255, 255, 255)
         green = _rgb(26, 127, 55) if light else _rgb(110, 210, 140)
 
         dpi = GetDpiForWindow(hwnd) or 96
-        # 9pt をピクセル高さに換算（-値は文字の高さ指定）
-        font = CreateFontW(
-            -round(9 * dpi / 72), 0, 0, 0, FW_NORMAL, 0, 0, 0,
-            DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0,
-            "Yu Gothic UI",
-        )
-        old_font = SelectObject(hdc, font)
-        brush = CreateSolidBrush(bg)
-        FillRect(hdc, ctypes.byref(rc), brush)
-        DeleteObject(brush)
-        SetBkMode(hdc, TRANSPARENT)
+        margin = round(PILL_MARGIN * dpi / 96)
 
-        flags = DT_CENTER | DT_VCENTER | DT_SINGLELINE
-        items = self.cells
-        if not items:
-            SetTextColor(hdc, fg)
-            text = "アプリ時間: 未接続" if items is None else "対象なし"
-            DrawTextW(hdc, text, -1, ctypes.byref(rc), flags)
+        if cells:
+            cell_w = w // len(cells)
+            slots = [RECT(i * cell_w, 0, (i + 1) * cell_w, h) for i in range(len(cells))]
+            entries = [
+                (f"{item['label']} {item['minutes']}分", green if item["counting"] else fg)
+                for item in cells
+            ]
         else:
-            cell_w = (rc.right - rc.left) // len(items)
-            for i, item in enumerate(items):
-                cell = RECT(i * cell_w, rc.top, (i + 1) * cell_w, rc.bottom)
-                SetTextColor(hdc, green if item["counting"] else fg)
-                text = f"{item['label']} {item['minutes']}分"
-                DrawTextW(hdc, text, -1, ctypes.byref(cell), flags)
+            slots = [RECT(0, 0, w, h)]
+            text = "アプリ時間: 未接続" if cells is None else "対象なし"
+            entries = [(text, fg)]
 
-        SelectObject(hdc, old_font)
-        DeleteObject(font)
-        EndPaint(hwnd, ctypes.byref(ps))
+        # GDI の確保に失敗しても、確保できたものだけを後始末する
+        screen_dc = GetDC(None)
+        if not screen_dc:
+            raise ctypes.WinError(ctypes.get_last_error())
+        mem_dc = dib = font = None
+        old_bmp = old_font = None
+        try:
+            mem_dc = CreateCompatibleDC(screen_dc)
+            if not mem_dc:
+                raise ctypes.WinError(ctypes.get_last_error())
+            info = BITMAPINFO()
+            info.bmiHeader.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            info.bmiHeader.biWidth = w
+            info.bmiHeader.biHeight = -h  # 負の値で上から下へ並べる
+            info.bmiHeader.biPlanes = 1
+            info.bmiHeader.biBitCount = 32
+            info.bmiHeader.biCompression = BI_RGB
+            bits = ctypes.c_void_p()
+            dib = CreateDIBSection(
+                mem_dc, ctypes.byref(info), DIB_RGB_COLORS, ctypes.byref(bits), None, 0
+            )
+            if not dib:
+                raise ctypes.WinError(ctypes.get_last_error())
+            old_bmp = SelectObject(mem_dc, dib)
+
+            # 9pt をピクセル高さに換算（-値は文字の高さ指定）
+            font = CreateFontW(
+                -round(9 * dpi / 72), 0, 0, 0, FW_NORMAL, 0, 0, 0,
+                DEFAULT_CHARSET, 0, 0, ANTIALIASED_QUALITY, 0,
+                "Yu Gothic UI",
+            )
+            if not font:
+                raise OSError("フォントが作れない")
+            old_font = SelectObject(mem_dc, font)
+
+            # 透明にする部分を番兵色で塗る（後で α=0 にする）
+            sentinel = CreateSolidBrush(_rgb(255, 0, 255))
+            FillRect(mem_dc, ctypes.byref(rc), sentinel)
+            DeleteObject(sentinel)
+            SetBkMode(mem_dc, TRANSPARENT)
+
+            flags = DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS
+            for slot, (text, color) in zip(slots, entries):
+                # 枠は角丸のピル型。高さいっぱいの半径にする
+                box = RECT(
+                    slot.left + margin,
+                    slot.top + margin,
+                    slot.right - margin,
+                    slot.bottom - margin,
+                )
+                radius = box.bottom - box.top
+                brush = CreateSolidBrush(pill)
+                old_brush = SelectObject(mem_dc, brush)
+                old_pen = SelectObject(mem_dc, GetStockObject(NULL_PEN))
+                RoundRect(mem_dc, box.left, box.top, box.right, box.bottom, radius, radius)
+                SelectObject(mem_dc, old_pen)
+                SelectObject(mem_dc, old_brush)
+                DeleteObject(brush)
+
+                SetTextColor(mem_dc, color)
+                DrawTextW(mem_dc, text, -1, ctypes.byref(box), flags)
+
+            pixels = (ctypes.c_uint32 * (w * h)).from_address(bits.value)
+            pixels[:] = to_argb(list(pixels), SENTINEL_RGB, _dib_rgb(pill), PILL_ALPHA)
+
+            size = SIZE(w, h)
+            src = POINT(0, 0)
+            blend = BLENDFUNCTION(AC_SRC_OVER, 0, 255, AC_SRC_ALPHA)
+            ok = UpdateLayeredWindow(
+                hwnd, screen_dc, None, ctypes.byref(size),
+                mem_dc, ctypes.byref(src), 0, ctypes.byref(blend), ULW_ALPHA,
+            )
+            if not ok:
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            if old_font is not None:
+                SelectObject(mem_dc, old_font)
+            if old_bmp is not None:
+                SelectObject(mem_dc, old_bmp)
+            if font:
+                DeleteObject(font)
+            if dib:
+                DeleteObject(dib)
+            if mem_dc:
+                DeleteDC(mem_dc)
+            ReleaseDC(None, screen_dc)
