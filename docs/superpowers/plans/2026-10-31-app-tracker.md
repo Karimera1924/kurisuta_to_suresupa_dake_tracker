@@ -100,7 +100,7 @@ Written for: 実装を担当するエージェント（Haiku 5.5）と、後で�
 
 ## フェーズ 4: 常駐化と旧版の整理
 
-- [ ] `scripts/register-tasks.ps1`: tracker と tray を「ログオン時」に登録する（登録・削除の両方）
+- [x] `scripts/register-tasks.ps1`: tracker と tray を「ログオン時」に登録する（登録・削除の両方）
 - [ ] 新旧の CSV が一致することを 1 日分で確認したら、`AppTimeTracker.ps1` を削除するかユーザーに確認する（削除は破壊的なので、ユーザーの了承を得てから）
 
 ## フェーズ 3 の決定事項（タスクバーウィンドウ）
