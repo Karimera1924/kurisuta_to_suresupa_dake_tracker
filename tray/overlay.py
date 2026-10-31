@@ -53,10 +53,11 @@ WM_LBUTTONUP = 0x0202
 WM_APP = 0x8000
 MSG_REFRESH = WM_APP + 1
 MSG_STOP = WM_APP + 2
+MSG_CHECK = WM_APP + 3
 WM_TIMER = 0x0113
-# 全画面の出入りは前面の切り替えを伴わないことがあるため、表示の要否をこの間隔で見直す（ミリ秒）
+# 表示の要否は主にイベントで見直す。タイマーは自動非表示（イベントが無い）と取りこぼしの保険（ミリ秒）
 RECHECK_TIMER_ID = 1
-RECHECK_MS = 300
+RECHECK_MS = 1000
 DT_CENTER = 0x01
 DT_VCENTER = 0x04
 DT_SINGLELINE = 0x20
@@ -78,6 +79,8 @@ TRAY_NOTIFY_CLASS = "TrayNotifyWnd"
 PROCESS_PER_MONITOR_DPI_AWARE = 2
 SW_HIDE = 0
 EVENT_SYSTEM_FOREGROUND = 0x0003
+EVENT_OBJECT_LOCATIONCHANGE = 0x800B
+OBJID_WINDOW = 0
 WINEVENT_OUTOFCONTEXT = 0x0000
 MONITOR_DEFAULTTONEAREST = 0x00000002
 ABM_GETSTATE = 0x00000004
@@ -546,7 +549,7 @@ class Overlay:
         self.cell_width = cell_width  # 論理ピクセル（100% 基準）
         self.cells = None  # None は未接続
         self.overlay_hwnd = None
-        self._hook = None
+        self._hooks = []
         self._hook_proc = None  # ctypes のコールバックは参照を持ち続けないと回収される
         self._shown = False  # 表示中か（表示中の再確認では再描画を省く）
         _register_class()
@@ -570,7 +573,7 @@ class Overlay:
 
     def run(self):
         try:
-            self._install_foreground_hook()
+            self._install_hooks()
             if not SetTimer(self.host, RECHECK_TIMER_ID, RECHECK_MS, None):
                 log_error(ctypes.WinError(ctypes.get_last_error()))
             self._refresh()
@@ -583,25 +586,32 @@ class Overlay:
 
     def _teardown(self):
         # 終了時に、フック・タイマー・窓を確実に片付ける（途中で例外が出ても残さない）
-        if self._hook:
-            UnhookWinEvent(self._hook)
-            self._hook = None
+        for hook in self._hooks:
+            UnhookWinEvent(hook)
+        self._hooks = []
         KillTimer(self.host, RECHECK_TIMER_ID)
         self._discard()
         DestroyWindow(self.host)
 
-    def _install_foreground_hook(self):
-        # 前面の窓が変わったら、表示の要否を見直す。コールバックは主スレッドのメッセージループで呼ばれる
-        self._hook_proc = WINEVENTPROC(self._on_foreground)
-        self._hook = SetWinEventHook(
-            EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, None,
-            self._hook_proc, 0, 0, WINEVENT_OUTOFCONTEXT,
-        )
-        if not self._hook:
-            log_error(ctypes.WinError(ctypes.get_last_error()))
+    def _install_hooks(self):
+        # 前面の切り替え（EVENT_SYSTEM_FOREGROUND）と、前面の窓の移動・リサイズ（LOCATIONCHANGE）で
+        # 表示の要否を即座に見直す。コールバックは主スレッドのメッセージループで呼ばれる
+        self._hook_proc = WINEVENTPROC(self._on_event)
+        for event in (EVENT_SYSTEM_FOREGROUND, EVENT_OBJECT_LOCATIONCHANGE):
+            hook = SetWinEventHook(
+                event, event, None, self._hook_proc, 0, 0, WINEVENT_OUTOFCONTEXT,
+            )
+            if hook:
+                self._hooks.append(hook)
+            else:
+                log_error(ctypes.WinError(ctypes.get_last_error()))
 
-    def _on_foreground(self, hook, event, hwnd, id_object, id_child, thread, time):
-        PostMessageW(self.host, MSG_REFRESH, 0, 0)
+    def _on_event(self, hook, event, hwnd, id_object, id_child, thread, time):
+        if event == EVENT_SYSTEM_FOREGROUND:
+            PostMessageW(self.host, MSG_REFRESH, 0, 0)
+        elif id_object == OBJID_WINDOW and hwnd and hwnd == GetForegroundWindow():
+            # 他の窓の動きでは再判定しない（前面の窓だけ見る）
+            PostMessageW(self.host, MSG_CHECK, 0, 0)
 
     def handle(self, hwnd, msg):
         # None を返すと DefWindowProc に任せる
@@ -609,7 +619,7 @@ class Overlay:
             if msg == MSG_REFRESH:
                 self._refresh()
                 return 0
-            if msg == WM_TIMER:
+            if msg in (WM_TIMER, MSG_CHECK):
                 # 表示の要否だけ見直す。表示中なら描画は変えない
                 self._refresh(repaint=False)
                 return 0
