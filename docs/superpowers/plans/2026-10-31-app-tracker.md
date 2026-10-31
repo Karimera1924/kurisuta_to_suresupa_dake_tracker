@@ -85,16 +85,16 @@ Written for: 実装を担当するエージェント（Haiku 5.5）と、後で�
 
 ## フェーズ 2: WebUI（後半）
 
-- [ ] `web/index.html` と `web/app.js`（素の JS、`/api/status` を 5 秒おきに取得）
-- [ ] 今日の合計と、対象の計測中・待機中の表示
-- [ ] `/api/summary` と日付選択（余力があれば）
+- [x] `web/index.html` と `web/app.js`（素の JS、`/api/status` を 5 秒おきに取得）
+- [x] 今日の合計と、対象の計測中・待機中の表示
+- [ ] `/api/summary` と日付選択（余力があれば）※任意、未着手
 
 ## フェーズ 3: tray（Python）
 
-- [ ] `tray/tray.py`（pystray + Pillow）。`/api/status` を 5 秒おきに取得し、ツールチップを更新
-- [ ] メニュー: 「WebUI を開く」「終了」。tracker 未接続なら「未接続」と表示
-- [ ] `tray/requirements.txt`（pystray, Pillow のバージョン固定）
-- 検証: 実機で `pythonw tray/tray.py` を起動し、タスクバーに出ること
+- [x] `tray/tray.py`（pystray + Pillow）。`/api/status` を 5 秒おきに取得し、ツールチップを更新
+- [x] メニュー: 「WebUI を開く」「終了」。tracker 未接続なら「未接続」と表示
+- [x] `tray/requirements.txt`（pystray, Pillow のバージョン固定）
+- [ ] 検証: 実機で `pythonw tray/tray.py` を起動し、タスクバーに出ること（ユーザー目視待ち）
 
 ## フェーズ 4: 常駐化と旧版の整理
 
