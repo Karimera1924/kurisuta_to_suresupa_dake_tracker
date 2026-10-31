@@ -138,3 +138,24 @@ test("POST など GET 以外は 405", async () => {
     await s.close();
   }
 });
+
+test("壊れた request-target でもサーバは落ちず、次のリクエストに答える", async () => {
+  const { webDir } = setup();
+  const s = await start(webDir);
+  try {
+    const net = require("node:net");
+    const port = Number(new URL(s.base).port);
+    await new Promise((resolve) => {
+      const sock = net.connect(port, HOST, () => {
+        sock.write("GET http://[ HTTP/1.1\r\nHost: x\r\n\r\n");
+      });
+      sock.on("data", () => sock.destroy());
+      sock.on("error", () => resolve());
+      sock.on("close", () => resolve());
+    });
+    const res = await fetch(`${s.base}/api/health`);
+    assert.equal(res.status, 200);
+  } finally {
+    await s.close();
+  }
+});

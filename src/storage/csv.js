@@ -34,6 +34,17 @@ function writeFileBom(file, text) {
   fs.writeFileSync(file, BOM + text, "utf8");
 }
 
+// PowerShell の [math]::Round(x, 1) と同じ偶数丸め（0.25 → 0.2、0.75 → 0.8）
+function roundHalfEvenToTenth(x) {
+  const scaled = x * 10;
+  const floor = Math.floor(scaled);
+  const diff = scaled - floor;
+  let n;
+  if (diff === 0.5) n = floor % 2 === 0 ? floor : floor + 1;
+  else n = Math.round(scaled);
+  return n / 10;
+}
+
 // 今日の合計を書き直す。targets の順に 1 行ずつ。
 function writeSummary({ dir, date, targets, totals, now }) {
   fs.mkdirSync(dir, { recursive: true });
@@ -42,7 +53,7 @@ function writeSummary({ dir, date, targets, totals, now }) {
   for (const t of targets) {
     const sec = totals[t.key] ?? 0;
     lines.push(
-      `${date},${t.label},${sec},${Math.round((sec / 60) * 10) / 10},${updatedAt}`,
+      `${date},${t.label},${sec},${roundHalfEvenToTenth(sec / 60)},${updatedAt}`,
     );
   }
   writeFileBom(summaryPath(dir, date), lines.join("\r\n") + "\r\n");

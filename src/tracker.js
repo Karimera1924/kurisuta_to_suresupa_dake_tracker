@@ -68,10 +68,17 @@ function main() {
     return { date, acc };
   }
 
+  // 書けなかった区間はキューに残し、書けた分だけ取り除く（Excel で開かれていて一時的に書けない場合など）
+  const pending = [];
+
   // 開いている区間を閉じて、その日の CSV を書く
   function saveDay(now, events) {
-    for (const e of events)
-      appendSession({ dir: cfg.outDir, date: day.date, event: e });
+    for (const e of events) pending.push({ date: day.date, event: e });
+    while (pending.length > 0) {
+      const { date, event } = pending[0];
+      appendSession({ dir: cfg.outDir, date, event });
+      pending.shift();
+    }
     writeSummary({
       dir: cfg.outDir,
       date: day.date,
@@ -140,6 +147,11 @@ function main() {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("uncaughtException", (err) => {
     log(`予期しない例外: ${err.stack || err}`);
+    try {
+      if (day) saveDay(Date.now(), day.acc.flush());
+    } catch (saveErr) {
+      log(`例外後の保存に失敗: ${saveErr.stack || saveErr}`);
+    }
     process.exit(1);
   });
 }

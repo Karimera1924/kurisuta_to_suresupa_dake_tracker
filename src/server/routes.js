@@ -48,29 +48,47 @@ function serveStatic(req, res, webDir, pathname) {
     "application/octet-stream";
   res.writeHead(200, { "Content-Type": type });
   if (req.method === "HEAD") return res.end();
-  fs.createReadStream(file).pipe(res);
+  const stream = fs.createReadStream(file);
+  // 読み込み途中のエラー（ファイルのロックなど）でプロセスを落とさない
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
+}
+
+function route(req, res, { getStatus, webDir }) {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.setHeader("Allow", "GET, HEAD");
+    return sendJson(res, 405, { error: "method_not_allowed" });
+  }
+
+  let pathname;
+  try {
+    ({ pathname } = new URL(req.url, "http://127.0.0.1"));
+  } catch {
+    return sendJson(res, 400, { error: "bad_request" });
+  }
+
+  if (pathname === "/api/health") {
+    return sendJson(res, 200, { ok: true, version: VERSION });
+  }
+  if (pathname === "/api/status") {
+    return sendJson(res, 200, getStatus());
+  }
+  if (pathname.startsWith("/api/")) {
+    return sendJson(res, 404, { error: "not_found" });
+  }
+  return serveStatic(req, res, webDir, pathname);
 }
 
 // getStatus(): /api/status の本文を返す関数。webDir: 静的配信の root。
+// 1 リクエストの例外で計測プロセスを止めないよう、ここで 500 に変える。
 function createRequestHandler({ getStatus, webDir }) {
   return function handle(req, res) {
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      res.setHeader("Allow", "GET, HEAD");
-      return sendJson(res, 405, { error: "method_not_allowed" });
+    try {
+      route(req, res, { getStatus, webDir });
+    } catch {
+      if (!res.headersSent) sendJson(res, 500, { error: "internal" });
+      else res.destroy();
     }
-
-    const { pathname } = new URL(req.url, "http://127.0.0.1");
-
-    if (pathname === "/api/health") {
-      return sendJson(res, 200, { ok: true, version: VERSION });
-    }
-    if (pathname === "/api/status") {
-      return sendJson(res, 200, getStatus());
-    }
-    if (pathname.startsWith("/api/")) {
-      return sendJson(res, 404, { error: "not_found" });
-    }
-    return serveStatic(req, res, webDir, pathname);
   };
 }
 

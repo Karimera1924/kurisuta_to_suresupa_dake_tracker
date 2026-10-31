@@ -7,6 +7,7 @@ const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 const TITLE_CHARS = 512;
 const IMAGE_PATH_CHARS = 32768;
 const UINT32_SPAN = 0x100000000;
+const NOT_IDLE_LIMIT = Number.MAX_SAFE_INTEGER;
 
 const user32 = koffi.load("user32.dll");
 const kernel32 = koffi.load("kernel32.dll");
@@ -75,9 +76,10 @@ function foregroundWindow() {
 }
 
 // 最終入力からの経過ミリ秒。dwTime は 32 bit なので、GetTickCount64 の下位 32 bit と引き算する。
+// 取得できない時は「長く無操作」扱いにして計測しない（PS1 と同じ。過大計測を避けるため）。
 function idleMs() {
   const info = { cbSize: 8, dwTime: 0 };
-  if (!GetLastInputInfo(info)) return 0;
+  if (!GetLastInputInfo(info)) return NOT_IDLE_LIMIT;
   const nowLow = Number(GetTickCount64()) % UINT32_SPAN;
   return (nowLow - info.dwTime + UINT32_SPAN) % UINT32_SPAN;
 }
@@ -88,7 +90,7 @@ function observe() {
   try {
     return { foreground: foregroundWindow(), idleMs: idleMs() };
   } catch {
-    return { foreground: null, idleMs: 0 };
+    return { foreground: null, idleMs: NOT_IDLE_LIMIT };
   }
 }
 

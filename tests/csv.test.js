@@ -44,6 +44,23 @@ test("summary を書いて、同じ合計を読み戻せる（再起動の引き
   });
 });
 
+test("total_minutes は PowerShell の [math]::Round と同じ偶数丸め", () => {
+  const dir = tmpDir();
+  const now = new Date(2026, 9, 31, 12, 0, 0).getTime();
+  const date = "2026-10-31";
+  writeSummary({
+    dir,
+    date,
+    targets: TARGETS,
+    totals: { clipstudio: 15, slaythespire: 75 },
+    now,
+  });
+
+  const text = fs.readFileSync(summaryPath(dir, date), "utf8");
+  assert.ok(text.includes("2026-10-31,クリスタ,15,0.2,12:00:00"));
+  assert.ok(text.includes("2026-10-31,スレスパ,75,1.2,12:00:00"));
+});
+
 test("summary が無い日は空の合計を返す", () => {
   assert.deepEqual(
     loadTotals({ dir: tmpDir(), date: "2000-01-01", targets: TARGETS }),
