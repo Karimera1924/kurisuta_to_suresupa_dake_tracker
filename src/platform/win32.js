@@ -11,7 +11,8 @@ const UINT32_SPAN = 0x100000000;
 const user32 = koffi.load("user32.dll");
 const kernel32 = koffi.load("kernel32.dll");
 
-const LASTINPUTINFO = koffi.struct("LASTINPUTINFO", {
+// 下の GetLastInputInfo の宣言文字列から名前で参照されるため、登録だけ行う
+koffi.struct("LASTINPUTINFO", {
   cbSize: "uint32",
   dwTime: "uint32",
 });
