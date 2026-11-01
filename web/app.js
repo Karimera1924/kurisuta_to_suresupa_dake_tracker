@@ -385,7 +385,9 @@ function renderHourly(hourly) {
   el.hourly.replaceChildren(
     ...hourly.map((sec, hour) => {
       const track = h("div", "bar-track");
-      if (sec > 0) {
+      // 最大値の 1% 未満は極端に細い線になるため、グラフ上では省略する。
+      // 正確な秒数は下の区間一覧に残す。
+      if (sec / max >= 0.01) {
         const fill = h("div", "bar-fill");
         fill.style.height = `${(sec / max) * 100}%`;
         fill.title = `${String(hour).padStart(2, "0")}時台  ${formatSeconds(sec)}`;
