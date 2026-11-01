@@ -130,17 +130,17 @@ class CellItemsTest(unittest.TestCase):
     def test_計測中の対象だけ緑扱いにする(self):
         status = {
             "counting": True,
-            "target": "clipstudio",
-            "totals": {
-                "clipstudio": {"label": "クリスタ", "seconds": 725},
-                "slaythespire": {"label": "スレスパ", "seconds": 59},
-            },
+            "target": "clipstudiopaint",
+            "pinned": [
+                {"key": "clipstudiopaint", "label": "ClipStudioPaint", "seconds": 725},
+                {"key": "slaythespire", "label": "SlayTheSpire", "seconds": 59},
+            ],
         }
         self.assertEqual(
             cell_items(status),
             [
-                {"label": "クリスタ", "minutes": 12, "counting": True},
-                {"label": "スレスパ", "minutes": 0, "counting": False},
+                {"label": "ClipStudioPaint", "minutes": 12, "counting": True},
+                {"label": "SlayTheSpire", "minutes": 0, "counting": False},
             ],
         )
 
@@ -148,13 +148,15 @@ class CellItemsTest(unittest.TestCase):
         status = {
             "counting": False,
             "target": None,
-            "totals": {"clipstudio": {"label": "クリスタ", "seconds": 0}},
+            "pinned": [{"key": "clipstudiopaint", "label": "ClipStudioPaint", "seconds": 0}],
         }
         self.assertEqual(
             cell_items(status),
-            [{"label": "クリスタ", "minutes": 0, "counting": False}],
+            [{"label": "ClipStudioPaint", "minutes": 0, "counting": False}],
         )
 
+    def test_ピンが無ければ空のリスト(self):
+        self.assertEqual(cell_items({"counting": False, "pinned": []}), [])
 
 if __name__ == "__main__":
     unittest.main()

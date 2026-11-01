@@ -1,7 +1,7 @@
 """アプリ時間トラッカーのタスクバー常駐アイコンと、タスクバーのオーバーレイ。
 
 /api/status を 5 秒おきに取得して、以下を更新する。
-- タスクバーのオーバーレイ（通知領域のすぐ左に、クリスタとスレスパの今日の合計）
+- タスクバーのオーバーレイ（通知領域のすぐ左に、ピン留めしたアプリの今日の合計）
 - トレイアイコンのツールチップ（マウスを載せた時の文字）
 
 トレイのメニューは「WebUI を開く」「終了」。オーバーレイのクリックでも WebUI を開く。
@@ -64,7 +64,7 @@ def build_tooltip(status):
 
     parts = [
         f"{info['label']} {info['seconds'] // 60}分"
-        for info in status.get("totals", {}).values()
+        for info in status.get("pinned", [])
     ]
     text = "アプリ時間 " + head + " | " + " / ".join(parts)
     return text[:TOOLTIP_MAX]
