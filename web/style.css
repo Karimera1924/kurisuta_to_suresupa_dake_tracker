@@ -129,6 +129,9 @@ h3 {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.wrap {
+  overflow-wrap: anywhere;
+}
 .row {
   display: flex;
   flex-wrap: wrap;

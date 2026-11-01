@@ -1,4 +1,4 @@
-// /api/status を 5 秒おき、/api/history を 30 秒おき、/api/sessions を 5 秒おきに取得して画面に出す。
+// /api/status を 5 秒おき、/api/history を 30 秒おき、/api/sessions と /api/titles を 5 秒おきに取得して画面に出す。
 // 取得に失敗したら「未接続」や「取得できませんでした」と出して、次の周期で再試行する。
 // DOM は textContent と createElement だけで組み立てる（データを innerHTML に入れない）。
 const POLL_MS = 5000;
@@ -36,6 +36,10 @@ const el = {
   sessionsNote: $("sessions-note"),
   hourly: $("hourly"),
   sessionsBody: $("sessions-body"),
+  titlesDate: $("titles-date"),
+  titlesToday: $("titles-today"),
+  titlesNote: $("titles-note"),
+  titlesBody: $("titles-body"),
 };
 
 const state = {
@@ -437,6 +441,34 @@ async function loadSessions() {
   }
 }
 
+// Chrome のウィンドウタイトル別の秒数（秒の多い順）。タイトルは長いことがあるので折り返す。
+function renderTitles(data) {
+  const total = data.titles.reduce((sum, t) => sum + t.seconds, 0);
+  el.titlesNote.textContent = `対象日: ${data.date}（タイトル ${data.titles.length} 件・合計 ${formatSeconds(total)}）`;
+  const rows = data.titles.map((t) => {
+    const tr = h("tr");
+    tr.append(
+      h("td", "wrap", t.label),
+      h("td", "num", formatSeconds(t.seconds)),
+    );
+    return tr;
+  });
+  el.titlesBody.replaceChildren(...rows);
+}
+
+// 日付欄が空なら今日（サーバ側で決める）
+async function loadTitles() {
+  const date = el.titlesDate.value;
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  try {
+    const res = await fetch(`/api/titles${query}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderTitles(await res.json());
+  } catch {
+    el.titlesNote.textContent = "タイトルを取得できませんでした";
+  }
+}
+
 el.pinForm.addEventListener("submit", savePinned);
 el.pinAdd.addEventListener("click", addExtra);
 el.pinNew.addEventListener("keydown", (e) => {
@@ -458,13 +490,20 @@ el.sessionsToday.addEventListener("click", () => {
   el.sessionsDate.value = "";
   loadSessions();
 });
+el.titlesDate.addEventListener("change", loadTitles);
+el.titlesToday.addEventListener("click", () => {
+  el.titlesDate.value = "";
+  loadTitles();
+});
 
 refresh();
 setInterval(refresh, POLL_MS);
 loadHistory();
 setInterval(loadHistory, HISTORY_POLL_MS);
 loadSessions();
-// 日付を指定して見ている時は、今日の区間を追いかけ続けない
+loadTitles();
+// 日付を指定して見ている時は、今日の区間・タイトルを追いかけ続けない
 setInterval(() => {
   if (!el.sessionsDate.value) loadSessions();
+  if (!el.titlesDate.value) loadTitles();
 }, POLL_MS);

@@ -114,6 +114,31 @@
           </table>
         </div>
       </section>
+
+      <section class="wide">
+        <h2>Chrome のウィンドウタイトル別</h2>
+        <p class="muted">
+          Chrome
+          が前面のときの時間を、ウィンドウタイトルごとに数えます（アプリ別の集計には含まれる
+          Chrome の時間と同じもの）。
+        </p>
+        <div class="row">
+          <label>日付 <input id="titles-date" type="date" /></label>
+          <button type="button" id="titles-today">今日に戻す</button>
+          <span id="titles-note" class="muted"></span>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>タイトル</th>
+                <th class="num">時間</th>
+              </tr>
+            </thead>
+            <tbody id="titles-body"></tbody>
+          </table>
+        </div>
+      </section>
     </main>
 
     <footer class="muted">

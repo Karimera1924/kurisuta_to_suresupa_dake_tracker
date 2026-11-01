@@ -5,11 +5,14 @@ const os = require("node:os");
 const path = require("node:path");
 const {
   writeSummary,
+  writeTitles,
   appendSession,
   loadTotals,
+  loadTitles,
   localDate,
   loadSessions,
   summaryPath,
+  titlesPath,
   sessionsPath,
 } = require("../src/storage/csv");
 
@@ -53,6 +56,31 @@ test("total_minutes は PowerShell の [math]::Round と同じ偶数丸め", () 
   const text = fs.readFileSync(summaryPath(dir, date), "utf8");
   assert.ok(text.includes("2026-10-31,A,15,0.2,12:00:00"));
   assert.ok(text.includes("2026-10-31,B,75,1.2,12:00:00"));
+});
+
+test("titles を書いて、同じ合計を読み戻せる（タイトルに「,」があっても壊れない）", () => {
+  const dir = tmpDir();
+  const now = new Date(2026, 9, 31, 12, 0, 0).getTime();
+  const date = localDate(now);
+  const totals = {
+    "GitHub, Inc": { label: "GitHub_ Inc", seconds: 600 },
+    Docs: { label: "Docs", seconds: 90 },
+  };
+  writeTitles({ dir, date, totals, now });
+
+  const text = fs.readFileSync(titlesPath(dir, date), "utf8");
+  assert.ok(
+    text.startsWith(BOM + "date,title,total_seconds,total_minutes,updated_at"),
+  );
+  assert.ok(text.includes("2026-10-31,GitHub_ Inc,600,10,12:00:00"));
+  assert.deepEqual(loadTitles({ dir, date }), {
+    "GitHub_ Inc": { label: "GitHub_ Inc", seconds: 600 },
+    Docs: { label: "Docs", seconds: 90 },
+  });
+});
+
+test("titles が無い日は空の合計を返す", () => {
+  assert.deepEqual(loadTitles({ dir: tmpDir(), date: "2000-01-01" }), {});
 });
 
 test("summary が無い日は空の合計を返す", () => {

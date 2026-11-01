@@ -112,10 +112,25 @@ function handleJsonPost(req, res, apply) {
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+// ?date= の値。無ければ undefined、形式が違えば null（呼び出し側で 400 にする）。
+function dateParam(searchParams) {
+  const date = searchParams.get("date") || undefined;
+  if (date !== undefined && !DATE_PATTERN.test(date)) return null;
+  return date;
+}
+
 function route(
   req,
   res,
-  { getStatus, getHistory, getSessions, setPinned, setAliases, webDir },
+  {
+    getStatus,
+    getHistory,
+    getSessions,
+    getTitles,
+    setPinned,
+    setAliases,
+    webDir,
+  },
 ) {
   let pathname;
   let searchParams;
@@ -154,15 +169,17 @@ function route(
       : 7;
     return sendJson(res, 200, getHistory(days));
   }
-  if (pathname === "/api/sessions") {
-    const date = searchParams.get("date") || undefined;
-    if (date !== undefined && !DATE_PATTERN.test(date)) {
+  if (pathname === "/api/sessions" || pathname === "/api/titles") {
+    const date = dateParam(searchParams);
+    if (date === null) {
       return sendJson(res, 400, {
         error: "invalid",
         message: "date は YYYY-MM-DD",
       });
     }
-    return sendJson(res, 200, getSessions(date));
+    const body =
+      pathname === "/api/sessions" ? getSessions(date) : getTitles(date);
+    return sendJson(res, 200, body);
   }
   if (pathname.startsWith("/api/")) {
     return sendJson(res, 404, { error: "not_found" });
@@ -170,12 +187,13 @@ function route(
   return serveStatic(req, res, webDir, pathname);
 }
 
-// getStatus(): /api/status の本文を返す関数。getHistory(days) / getSessions(date) / setPinned(names) / setAliases(map) も同様。
+// getStatus(): /api/status の本文を返す関数。getHistory(days) / getSessions(date) / getTitles(date) / setPinned(names) / setAliases(map) も同様。
 // webDir: 静的配信の root。1 リクエストの例外で計測プロセスを止めないよう、ここで 500 に変える。
 function createRequestHandler({
   getStatus,
   getHistory,
   getSessions,
+  getTitles,
   setPinned,
   setAliases,
   webDir,
@@ -186,6 +204,7 @@ function createRequestHandler({
         getStatus,
         getHistory,
         getSessions,
+        getTitles,
         setPinned,
         setAliases,
         webDir,

@@ -6,12 +6,15 @@ const path = require("node:path");
 const { createAccumulator } = require("./core/accumulator");
 const {
   writeSummary,
+  writeTitles,
   appendSession,
   loadTotals,
+  loadTitles,
   loadSessions,
   localDate,
   localTime,
 } = require("./storage/csv");
+const { CHROME_KEY, createTitleTally } = require("./core/window-titles");
 const {
   loadPinned,
   savePinned,
@@ -19,6 +22,7 @@ const {
   saveAliases,
 } = require("./storage/settings");
 const { hourlyBuckets, splitByTop, topApps } = require("./core/report");
+const { formatDuration } = require("./core/rules");
 const { observe } = require("./platform/win32");
 const { createServer, HOST, DEFAULT_PORT } = require("./server");
 
@@ -28,6 +32,8 @@ const SETTINGS_FILE = path.join(ROOT, "data", "settings.json");
 const HISTORY_DAY_MS = 24 * 60 * 60 * 1000;
 // 履歴グラフで色を割り当てるアプリ数（期間内の稼働時間の上位から）。残りは「その他」。
 const TOP_APP_COUNT = 5;
+// ログに出す Chrome のタイトルの件数（日が変わるときと終了時）
+const LOG_TITLE_COUNT = 5;
 
 function numberFromEnv(name, fallback) {
   const v = Number(process.env[name]);
@@ -94,6 +100,15 @@ function readSessions(outDir, now, date) {
   return { date: day, sessions, hourly: hourlyBuckets(sessions) };
 }
 
+// 指定日（省略時は今日）の Chrome のウィンドウタイトル別の秒数。秒の多い順。
+function readTitles(outDir, now, date) {
+  const day = date || localDate(now);
+  const titles = Object.values(loadTitles({ dir: outDir, date: day })).sort(
+    (a, b) => b.seconds - a.seconds,
+  );
+  return { date: day, titles };
+}
+
 function main() {
   const cfg = loadConfig();
   let day = null;
@@ -109,7 +124,11 @@ function main() {
       idleSeconds: cfg.idleSeconds,
       initialTotals,
     });
-    return { date, acc };
+    const titles = createTitleTally({
+      pollSeconds: cfg.pollSeconds,
+      initialTotals: loadTitles({ dir: cfg.outDir, date }),
+    });
+    return { date, acc, titles };
   }
 
   // 書けなかった区間はキューに残し、書けた分だけ取り除く（Excel で開かれていて一時的に書けない場合など）
@@ -129,16 +148,40 @@ function main() {
       totals: day.acc.totals(),
       now,
     });
+    writeTitles({
+      dir: cfg.outDir,
+      date: day.date,
+      totals: day.titles.totals(),
+      now,
+    });
+  }
+
+  // 日の終わり（日付が変わる時・終了時）に、Chrome のタイトル上位をログに残す
+  function logTopTitles(d) {
+    const top = Object.values(d.titles.totals())
+      .sort((a, b) => b.seconds - a.seconds)
+      .slice(0, LOG_TITLE_COUNT);
+    if (top.length === 0) return;
+    const lines = top.map((t) => `  ${formatDuration(t.seconds)} ${t.label}`);
+    log(`Chrome のタイトル別時間 (${d.date}):\n${lines.join("\n")}`);
   }
 
   function step() {
     const now = Date.now();
     try {
       if (!day || localDate(now) !== day.date) {
-        if (day) saveDay(now, day.acc.flush());
+        if (day) {
+          saveDay(now, day.acc.flush());
+          logTopTitles(day);
+        }
         day = openDay(now);
       }
-      const r = day.acc.tick(now, observe());
+      const observation = observe();
+      const r = day.acc.tick(now, observation);
+      // Chrome が計測中のときだけ、前面のウィンドウタイトルを数える（アプリ単位の集計はそのまま）
+      if (r.counting && r.target === CHROME_KEY) {
+        day.titles.record(observation.foreground.title);
+      }
       saveDay(now, r.events);
       last = { counting: r.counting, target: r.target, now };
     } catch (err) {
@@ -190,6 +233,7 @@ function main() {
     getStatus: status,
     getHistory: (days) => readHistory(cfg.outDir, Date.now(), days),
     getSessions: (date) => readSessions(cfg.outDir, Date.now(), date),
+    getTitles: (date) => readTitles(cfg.outDir, Date.now(), date),
     setPinned,
     setAliases,
     webDir: cfg.webDir,
@@ -208,6 +252,7 @@ function main() {
     if (day) {
       try {
         saveDay(Date.now(), day.acc.flush());
+        logTopTitles(day);
       } catch (err) {
         log(`終了時の保存に失敗: ${err.stack || err}`);
       }
@@ -231,4 +276,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { loadConfig, readHistory, readSessions };
+module.exports = { loadConfig, readHistory, readSessions, readTitles };

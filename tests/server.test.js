@@ -38,7 +38,13 @@ async function start(webDir, overrides = {}) {
     },
     updatedAt: "12:00:00",
   };
-  const calls = { setPinned: [], setAliases: [], history: [], sessions: [] };
+  const calls = {
+    setPinned: [],
+    setAliases: [],
+    history: [],
+    sessions: [],
+    titles: [],
+  };
   const server = createServer({
     getStatus: () => status,
     getHistory: (days) => {
@@ -48,6 +54,10 @@ async function start(webDir, overrides = {}) {
     getSessions: (date) => {
       calls.sessions.push(date);
       return { date: date ?? "2026-10-31", sessions: [], hourly: [] };
+    },
+    getTitles: (date) => {
+      calls.titles.push(date);
+      return { date: date ?? "2026-10-31", titles: [] };
     },
     setPinned: (names) => {
       calls.setPinned.push(names);
@@ -392,6 +402,22 @@ test("GET /api/sessions は日付の形式が違えば 400", async () => {
     assert.equal(res.status, 400);
     assert.equal((await res.json()).error, "invalid");
     assert.equal(s.calls.sessions.length, 0);
+  } finally {
+    await s.close();
+  }
+});
+
+test("GET /api/titles は date 省略時に undefined、指定日はそのまま渡す。形式違いは 400", async () => {
+  const { webDir } = setup();
+  const s = await start(webDir);
+  try {
+    const a = await (await fetch(`${s.base}/api/titles`)).json();
+    assert.equal(a.date, "2026-10-31");
+    await fetch(`${s.base}/api/titles?date=2026-10-30`);
+    const bad = await fetch(`${s.base}/api/titles?date=2026/10/30`);
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json()).error, "invalid");
+    assert.deepEqual(s.calls.titles, [undefined, "2026-10-30"]);
   } finally {
     await s.close();
   }
