@@ -70,11 +70,13 @@
       <section class="wide">
         <h2>履歴</h2>
         <div class="row">
-          <label
-            ><input type="radio" name="range" value="7" checked /> 7 日</label
-          >
-          <label><input type="radio" name="range" value="30" /> 30 日</label>
-          <label><input type="radio" name="range" value="90" /> 90 日</label>
+          <div class="range" role="radiogroup" aria-label="期間">
+            <label
+              ><input type="radio" name="range" value="7" checked /> 7 日</label
+            >
+            <label><input type="radio" name="range" value="30" /> 30 日</label>
+            <label><input type="radio" name="range" value="90" /> 90 日</label>
+          </div>
           <span id="range-note" class="muted"></span>
         </div>
         <div id="legend" class="legend"></div>
