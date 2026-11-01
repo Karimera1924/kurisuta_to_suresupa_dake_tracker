@@ -6,7 +6,7 @@
 *{box-sizing:border-box}
 body{margin:0 auto;padding:34px 30px 42px;max-width:1120px;min-height:100vh;background:radial-gradient(ellipse at 12% 0%,rgba(226,208,185,.22),transparent 34rem),var(--page);color:var(--ink);font:14px/1.65 Inter,"Yu Gothic UI","Meiryo",sans-serif;letter-spacing:.01em}
 header{display:flex;align-items:center;gap:18px;padding:0 2px 26px;border-bottom:1px solid var(--line)}
-header h1{margin:0;font:500 25px Georgia,"Yu Mincho",serif}
+header h1{display:flex;align-items:center;gap:13px;margin:0;font:500 25px Georgia,"Yu Mincho",serif}header h1:before{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:var(--accent);color:#fffaf5;content:"a";font:29px/1 Georgia,serif}
 header p{margin:3px 0 0}
 #date{margin-left:auto;color:var(--muted);font-size:12px}
 #connection{margin:0;padding:5px 10px;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--green);font-size:11px;white-space:nowrap}
