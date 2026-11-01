@@ -384,11 +384,14 @@ function renderHourly(hourly) {
   const max = Math.max(1, ...hourly);
   el.hourly.replaceChildren(
     ...hourly.map((sec, hour) => {
-      const fill = h("div", "bar-fill");
-      fill.style.height = `${(sec / max) * 100}%`;
-      fill.title = `${String(hour).padStart(2, "0")}時台  ${formatSeconds(sec)}`;
       const track = h("div", "bar-track");
-      track.append(fill);
+      // 0 秒の時間帯には棒を作らない（CSS の min-height による偽の 1px 棒を防ぐ）
+      if (sec > 0) {
+        const fill = h("div", "bar-fill");
+        fill.style.height = `${(sec / max) * 100}%`;
+        fill.title = `${String(hour).padStart(2, "0")}時台  ${formatSeconds(sec)}`;
+        track.append(fill);
+      }
       const col = h("div", "bar-col");
       col.append(
         track,
