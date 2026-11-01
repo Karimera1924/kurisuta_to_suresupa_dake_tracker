@@ -3,15 +3,17 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { TARGETS } = require("../src/core/targets");
 const {
   writeSummary,
   appendSession,
   loadTotals,
   localDate,
+  loadSessions,
   summaryPath,
   sessionsPath,
 } = require("../src/storage/csv");
+
+const BOM = String.fromCharCode(0xfeff);
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "apptime-"));
@@ -21,27 +23,18 @@ test("summary を書いて、同じ合計を読み戻せる（再起動の引き
   const dir = tmpDir();
   const now = new Date(2026, 9, 31, 12, 0, 0).getTime();
   const date = localDate(now);
-  writeSummary({
-    dir,
-    date,
-    targets: TARGETS,
-    totals: { clipstudio: 600, slaythespire: 90 },
-    now,
-  });
+  const totals = {
+    clipstudiopaint: { label: "ClipStudioPaint", seconds: 600 },
+    slaythespire: { label: "SlayTheSpire", seconds: 90 },
+  };
+  writeSummary({ dir, date, totals, now });
 
   const text = fs.readFileSync(summaryPath(dir, date), "utf8");
   assert.ok(
-    text.startsWith(
-      String.fromCharCode(0xfeff) +
-        "date,app,total_seconds,total_minutes,updated_at",
-    ),
+    text.startsWith(BOM + "date,app,total_seconds,total_minutes,updated_at"),
   );
-  assert.ok(text.includes("2026-10-31,クリスタ,600,10,12:00:00"));
-
-  assert.deepEqual(loadTotals({ dir, date, targets: TARGETS }), {
-    clipstudio: 600,
-    slaythespire: 90,
-  });
+  assert.ok(text.includes("2026-10-31,ClipStudioPaint,600,10,12:00:00"));
+  assert.deepEqual(loadTotals({ dir, date }), totals);
 });
 
 test("total_minutes は PowerShell の [math]::Round と同じ偶数丸め", () => {
@@ -51,21 +44,45 @@ test("total_minutes は PowerShell の [math]::Round と同じ偶数丸め", () 
   writeSummary({
     dir,
     date,
-    targets: TARGETS,
-    totals: { clipstudio: 15, slaythespire: 75 },
+    totals: {
+      a: { label: "A", seconds: 15 },
+      b: { label: "B", seconds: 75 },
+    },
     now,
   });
-
   const text = fs.readFileSync(summaryPath(dir, date), "utf8");
-  assert.ok(text.includes("2026-10-31,クリスタ,15,0.2,12:00:00"));
-  assert.ok(text.includes("2026-10-31,スレスパ,75,1.2,12:00:00"));
+  assert.ok(text.includes("2026-10-31,A,15,0.2,12:00:00"));
+  assert.ok(text.includes("2026-10-31,B,75,1.2,12:00:00"));
 });
 
 test("summary が無い日は空の合計を返す", () => {
-  assert.deepEqual(
-    loadTotals({ dir: tmpDir(), date: "2000-01-01", targets: TARGETS }),
-    {},
-  );
+  assert.deepEqual(loadTotals({ dir: tmpDir(), date: "2000-01-01" }), {});
+});
+
+test("loadSessions は BOM を外して区間を読み戻す", () => {
+  const dir = tmpDir();
+  const start = new Date(2026, 9, 31, 9, 0, 0).getTime();
+  const end = new Date(2026, 9, 31, 9, 1, 0).getTime();
+  appendSession({
+    dir,
+    date: "2026-10-31",
+    event: { label: "ClipStudioPaint", start, end, seconds: 65 },
+  });
+  assert.deepEqual(loadSessions({ dir, date: "2026-10-31" }), [
+    {
+      label: "ClipStudioPaint",
+      start: "09:00:00",
+      end: "09:01:00",
+      seconds: 65,
+    },
+  ]);
+});
+
+test("loadSessions は区間が無い日（ファイル無し・空ファイル）で空配列", () => {
+  const dir = tmpDir();
+  assert.deepEqual(loadSessions({ dir, date: "2000-01-01" }), []);
+  fs.writeFileSync(sessionsPath(dir, "2000-01-02"), "");
+  assert.deepEqual(loadSessions({ dir, date: "2000-01-02" }), []);
 });
 
 test("sessions はヘッダを 1 回だけ書き、以後は追記する", () => {
@@ -76,22 +93,22 @@ test("sessions はヘッダを 1 回だけ書き、以後は追記する", () =>
   appendSession({
     dir,
     date,
-    event: { label: "クリスタ", start, end, seconds: 65 },
+    event: { label: "ClipStudioPaint", start, end, seconds: 65 },
   });
   appendSession({
     dir,
     date,
-    event: { label: "スレスパ", start, end, seconds: 60 },
+    event: { label: "SlayTheSpire", start, end, seconds: 60 },
   });
 
   const lines = fs
     .readFileSync(sessionsPath(dir, date), "utf8")
-    .replace(new RegExp("^" + String.fromCharCode(0xfeff)), "")
+    .replace(new RegExp("^" + BOM), "")
     .split("\r\n")
     .filter(Boolean);
   assert.deepEqual(lines, [
     "date,app,start,end,seconds",
-    "2026-10-31,クリスタ,09:00:00,09:01:00,65",
-    "2026-10-31,スレスパ,09:00:00,09:01:00,60",
+    "2026-10-31,ClipStudioPaint,09:00:00,09:01:00,65",
+    "2026-10-31,SlayTheSpire,09:00:00,09:01:00,60",
   ]);
 });

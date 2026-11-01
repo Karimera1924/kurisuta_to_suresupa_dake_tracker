@@ -1,9 +1,10 @@
 body {
   margin: 0;
-  padding: 16px 20px;
+  padding: 16px 20px 24px;
   font-family: "Yu Gothic UI", "Meiryo", sans-serif;
   background: #f5f5f7;
   color: #222;
+  max-width: 880px;
 }
 
 header h1 {
@@ -15,15 +16,47 @@ header p {
   margin: 4px 0 0;
 }
 
+h2 {
+  font-size: 16px;
+  margin: 24px 0 8px;
+}
+
+h3 {
+  font-size: 14px;
+  margin: 16px 0 6px;
+}
+
+section {
+  margin-top: 4px;
+}
+
 .muted {
   color: #777;
   font-size: 13px;
 }
 
-#cards {
+.error {
+  color: #b42318;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+/* 今日の実測カード */
+.cards {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
-  margin: 16px 0;
 }
 
 .card {
@@ -56,11 +89,181 @@ header p {
   border-left: 4px solid #1a7f37;
 }
 
+/* テーブル */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+th,
+td {
+  padding: 6px 12px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+}
+
+th {
+  font-size: 12px;
+  color: #666;
+  font-weight: normal;
+}
+
+tr.counting td:first-child {
+  color: #1a7f37;
+  font-weight: bold;
+}
+
+/* ピン留め */
+.pin-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.pin-item {
+  white-space: nowrap;
+}
+
+.pin-item:has(input:disabled) {
+  color: #aaa;
+}
+
+#pin-new {
+  flex: 1 1 220px;
+  padding: 4px 8px;
+}
+
+button {
+  padding: 4px 14px;
+  font: inherit;
+}
+
+button:disabled {
+  color: #999;
+}
+
+/* 履歴の棒グラフ */
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 180px;
+  padding: 12px 12px 4px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  overflow-x: auto;
+}
+
+.bar-col {
+  flex: 1 0 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  min-width: 14px;
+}
+
+.bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bar-fill {
+  width: 100%;
+  min-height: 1px;
+  background: #4a7fd1;
+  border-radius: 3px 3px 0 0;
+}
+
+.bar-label {
+  font-size: 10px;
+  color: #777;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+/* 積み上げ棒（1 日分）。高さは期間内の最大合計に対する割合、各区間の高さは秒数の比率。 */
+.stack {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 3px 3px 0 0;
+  overflow: hidden;
+}
+
+.seg {
+  min-height: 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.hourly .bar-fill {
+  background: #6aa3e8;
+}
+
+/* 別名 */
+.alias-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 6px 16px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.alias-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alias-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alias-input {
+  width: 9em;
+  padding: 3px 6px;
+  font: inherit;
+}
+
 footer {
   display: flex;
   justify-content: space-between;
-}
-
-.error {
-  color: #b42318;
+  margin-top: 24px;
 }

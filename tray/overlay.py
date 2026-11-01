@@ -369,7 +369,7 @@ def overlay_visible(covered_by_window, autohide):
 
 
 def cell_items(status):
-    # /api/status の totals を、表示用の枠のリストにする。未接続なら None
+    # /api/status の pinned（タスクバーに出すアプリ）を、表示用の枠のリストにする。未接続なら None
     if status is None:
         return None
     counting = bool(status.get("counting"))
@@ -378,9 +378,9 @@ def cell_items(status):
         {
             "label": info["label"],
             "minutes": info["seconds"] // 60,
-            "counting": counting and target == key,
+            "counting": counting and target == info["key"],
         }
-        for key, info in status.get("totals", {}).items()
+        for info in status.get("pinned", [])
     ]
 
 

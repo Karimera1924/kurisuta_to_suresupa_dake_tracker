@@ -1,37 +1,25 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { TARGETS } = require("../src/core/targets");
-const {
-  matchTarget,
-  isCounting,
-  formatDuration,
-} = require("../src/core/rules");
+const { appOf, isCounting, formatDuration } = require("../src/core/rules");
 
-test("プロセス名で対象を判定する（大文字小文字は無視）", () => {
-  const t = matchTarget({ processName: "clipstudiopaint", title: "" }, TARGETS);
-  assert.equal(t.key, "clipstudio");
+test("プロセス名からキーと表示名を決める（キーは小文字）", () => {
+  assert.deepEqual(appOf({ processName: "ClipStudioPaint", title: "" }), {
+    key: "clipstudiopaint",
+    label: "ClipStudioPaint",
+  });
 });
 
-test("プロセス名が一致しなければタイトルで判定する", () => {
-  const t = matchTarget(
-    { processName: "explorer", title: "Slay the Spire" },
-    TARGETS,
-  );
-  assert.equal(t.key, "slaythespire");
+test("除外対象・プロセス名なし・前面なしは null", () => {
+  assert.equal(appOf({ processName: "explorer", title: "" }), null);
+  assert.equal(appOf({ processName: "ShellExperienceHost", title: "" }), null);
+  assert.equal(appOf({ processName: "", title: "x" }), null);
+  assert.equal(appOf(null), null);
 });
 
-test("どちらも一致しなければ null、前面なしも null", () => {
-  assert.equal(
-    matchTarget({ processName: "notepad", title: "memo" }, TARGETS),
-    null,
-  );
-  assert.equal(matchTarget(null, TARGETS), null);
-});
-
-test("対象が前面で入力が閾値以内なら計測する", () => {
-  const t = TARGETS[0];
-  assert.equal(isCounting(t, 30000, 30), true);
-  assert.equal(isCounting(t, 30001, 30), false);
+test("前面のアプリがあって入力が閾値以内なら計測する", () => {
+  const app = { key: "x", label: "X" };
+  assert.equal(isCounting(app, 30000, 30), true);
+  assert.equal(isCounting(app, 30001, 30), false);
   assert.equal(isCounting(null, 0, 30), false);
 });
 

@@ -1,18 +1,4 @@
-// 計測対象の定義。増やすときはここに 1 件足す。
-// ProcessPattern / TitlePattern は部分一致（大文字小文字は無視）で判定する。
-const TARGETS = [
-  {
-    key: "clipstudio",
-    label: "クリスタ",
-    processPattern: "ClipStudio",
-    titlePattern: "CLIP STUDIO PAINT",
-  },
-  {
-    key: "slaythespire",
-    label: "スレスパ",
-    processPattern: "SlayTheSpire",
-    titlePattern: "Slay the Spire",
-  },
-];
+// タスクバーにピン留めできるアプリの最大件数。アプリ名に特別扱いは持たせない（既定のピン留めも無し）。
+const MAX_PINNED = 2;
 
-module.exports = { TARGETS };
+module.exports = { MAX_PINNED };

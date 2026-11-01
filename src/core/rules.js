@@ -1,24 +1,27 @@
 // 計測ルールの純粋関数。Windows API には依存しない。
 
-function includesIgnoreCase(text, pattern) {
-  if (!text || !pattern) return false;
-  return text.toLowerCase().includes(pattern.toLowerCase());
+// 集計に入れない前面プロセス（デスクトップ・ロック画面・検索など、作業時間ではないもの）
+const IGNORED_PROCESSES = new Set([
+  "explorer",
+  "shellexperiencehost",
+  "startmenuexperiencehost",
+  "searchhost",
+  "lockapp",
+]);
+
+// 前面ウィンドウのプロセス名から、集計のキーと表示名を決める。
+// プロセス名が取れない（権限不足など）・除外対象・前面なしは null。
+// キーは小文字化したプロセス名（同じ exe を大文字小文字違いで二重に数えないため）。
+function appOf(foreground) {
+  if (!foreground || !foreground.processName) return null;
+  const name = foreground.processName;
+  if (IGNORED_PROCESSES.has(name.toLowerCase())) return null;
+  return { key: name.toLowerCase(), label: name };
 }
 
-// 前面ウィンドウから対象を決める。プロセス名を先に見て、次にタイトルを見る。
-// 一致しなければ null。
-function matchTarget(foreground, targets) {
-  if (!foreground) return null;
-  for (const t of targets) {
-    if (includesIgnoreCase(foreground.processName, t.processPattern)) return t;
-    if (includesIgnoreCase(foreground.title, t.titlePattern)) return t;
-  }
-  return null;
-}
-
-// 対象が前面で、最後の入力が idleSeconds 以内なら計測する。
-function isCounting(target, idleMs, idleSeconds) {
-  return target !== null && idleMs <= idleSeconds * 1000;
+// 前面のアプリが決まっていて、最後の入力が idleSeconds 以内なら計測する。
+function isCounting(app, idleMs, idleSeconds) {
+  return app !== null && idleMs <= idleSeconds * 1000;
 }
 
 // 秒を読みやすい表記にする（例: 45秒 / 3分25秒 / 1時間15分30秒）。
@@ -31,4 +34,4 @@ function formatDuration(sec) {
   return `${m}分${s}秒`;
 }
 
-module.exports = { matchTarget, isCounting, formatDuration };
+module.exports = { appOf, isCounting, formatDuration };

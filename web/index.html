@@ -13,11 +13,108 @@
       <p id="connection" class="muted">接続中…</p>
     </header>
 
-    <main id="cards"></main>
+    <section>
+      <h2>今日の実測（タスクバー表示中のアプリ）</h2>
+      <div id="pinned-cards" class="cards"></div>
+    </section>
+
+    <section>
+      <h2>今日の全アプリ</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>アプリ</th>
+            <th class="num">時間</th>
+          </tr>
+        </thead>
+        <tbody id="today-body"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>タスクバーに表示するアプリ（最大 2 件）</h2>
+      <form id="pin-form">
+        <div id="pin-list" class="pin-list"></div>
+        <div class="row">
+          <input
+            id="pin-new"
+            type="text"
+            maxlength="260"
+            placeholder="プロセス名（例: chrome）"
+          />
+          <button type="button" id="pin-add">候補に追加</button>
+        </div>
+        <div class="row">
+          <button type="submit" id="pin-save" disabled>保存</button>
+          <span id="pin-msg" class="muted"></span>
+        </div>
+      </form>
+    </section>
+
+    <section>
+      <h2>別名（タスクバーに出す短い名前）</h2>
+      <p class="muted">
+        タスクバーの表示欄は狭いので、8
+        文字以内の別名を付けます。空欄にすると別名を消して、プロセス名に戻ります。
+      </p>
+      <form id="alias-form">
+        <div id="alias-list" class="alias-list"></div>
+        <div class="row">
+          <button type="submit" id="alias-save" disabled>別名を保存</button>
+          <span id="alias-msg" class="muted"></span>
+        </div>
+      </form>
+    </section>
+
+    <section>
+      <h2>履歴</h2>
+      <div class="row">
+        <label
+          ><input type="radio" name="range" value="7" checked /> 7 日</label
+        >
+        <label><input type="radio" name="range" value="30" /> 30 日</label>
+        <label><input type="radio" name="range" value="90" /> 90 日</label>
+        <span id="range-note" class="muted"></span>
+      </div>
+      <div id="legend" class="legend"></div>
+      <div id="bars" class="bars"></div>
+      <h3>期間内の合計</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>アプリ</th>
+            <th class="num">時間</th>
+            <th class="num">割合</th>
+          </tr>
+        </thead>
+        <tbody id="range-body"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>時間帯別と区間</h2>
+      <div class="row">
+        <label>日付 <input id="sessions-date" type="date" /></label>
+        <button type="button" id="sessions-today">今日に戻す</button>
+        <span id="sessions-note" class="muted"></span>
+      </div>
+      <div id="hourly" class="bars hourly"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>開始</th>
+            <th>終了</th>
+            <th>アプリ</th>
+            <th class="num">時間</th>
+          </tr>
+        </thead>
+        <tbody id="sessions-body"></tbody>
+      </table>
+    </section>
 
     <footer class="muted">
       <span id="updated"></span>
-      <span>5 秒ごとに更新</span>
+      <span>状態は 5 秒ごとに更新</span>
     </footer>
 
     <script src="app.js"></script>
